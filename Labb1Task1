@@ -1,0 +1,79 @@
+import calfem.geometry as cfg
+import calfem.mesh as cfm
+import calfem.core as cfc
+
+import calfem.utils as cfu
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+mpl.use('TkAgg')
+
+import calfem.vis_mpl as cfv
+
+import numpy as np
+
+## Task 1 ##
+
+# Preprocess
+
+A = 10
+E = 1
+Q = 100
+
+k = 5
+
+
+Coord = np.array([[2], 
+                  [4], 
+                  [6], 
+                  [8]])      # Coordinates of nodal points
+
+n_el = 3                        # Nbr of elements
+nen = 2                         # Nbr of nodes per element
+ndof = 4                        # Nbr of degrees of freedom in total
+
+E_dof = np.array([[1, 2],
+                  [2, 3],
+                  [3, 4]])            # Each elements degrees of freedom
+
+# Each node degree of freedom   
+Dof = np.asarray([[1],
+                  [2],
+                  [3],
+                  [4]]) 
+
+K = np.zeros([ndof, ndof])
+F_l = np.zeros([ndof, 1])
+F_b = np.zeros([ndof, 1])
+
+F_b[3] = -15 # Inserting boundary
+
+Ecoords = cfc.coordxtr(E_dof, Coord, Dof, nen)
+
+# Boundary Conditions: T(x = 2) = 0, q(x = 8) = 15 
+
+# Calculation and assembly
+
+# Creating the K-matrix as well as the F_l-Matrix
+
+for i in range(n_el):
+    Ke, Fe = cfc.bar1e(Ecoords[i], [k, A], [Q])
+    K, F_l = cfc.assem( E_dof[i,:], K, Ke, F_l, Fe) 
+
+bc = np.array([1])      # Node 1
+bcVal = np.array([0])   # Value: 0
+F = F_l + F_b
+
+a, r = cfc.solveq(K, F, bc, bcVal)
+
+# Post-processing
+
+ed = cfc.extract_ed( E_dof, a )
+
+plotpar = [1, 2, 1]
+cfv.eldraw2(Ecoords, np.array([[0, 0], [0, 0], [0, 0]]), plotpar)
+plotpar = [1, 4, 1]
+cfv.eldraw2(Ecoords, ed, plotpar)
+
+plt.show() 
