@@ -1,0 +1,125 @@
+import calfem.geometry as cfg
+import calfem.mesh as cfm
+
+import calfem.utils as cfu
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+mpl.use('TkAgg')
+
+import calfem.vis_mpl as cfv
+import calfem.core as cfc
+
+import numpy as np
+
+# Mesh data
+el_sizef, el_type, dofs_pn = 0.5, 2, 1
+mesh_dir = "./"
+
+# boundary markers
+MARKER_T_1000=0
+MARKER_T_100=1
+MARKER_QN_0=2
+
+def generate_mesh(show_geometry: bool):
+    # initialize mesh
+    g = cfg.geometry()
+    
+    # define parameters
+    R = 2
+    L = 10
+
+    # add points
+    g.point([0, 0], 0)
+    g.point([R, 0], 1)
+    g.point([L, 0], 2)
+    g.point([L, L], 3)
+    g.point([0, L], 4)
+    g.point([0, R], 5)
+
+    # define lines / circle segments
+    g.circle([1, 0, 5], 0, marker=MARKER_T_1000)
+    g.spline([1, 2], 1, marker=MARKER_QN_0)
+    g.spline([2, 3], 2, marker=MARKER_T_100)
+    g.spline([3, 4], 3, marker=MARKER_T_100)
+    g.spline([4, 5], 4, marker=MARKER_QN_0)
+
+    # define surface
+    g.surface([0, 1, 2, 3, 4])
+
+    # generate mesh
+    mesh = cfm.GmshMeshGenerator(g, mesh_dir=mesh_dir)
+    mesh.el_size_factor = el_sizef
+    mesh.el_type = el_type
+    mesh.dofs_per_node = dofs_pn
+    coord, edof, dofs, bdofs, element_markers = mesh.create()
+
+    # display mesh
+    if show_geometry:
+        fig, ax = plt.subplots()
+        cfv.draw_geometry(
+            g,
+            label_curves=True,
+            title="Geometry: Computer Lab Exercise 2"
+        )
+        
+        plt.show()
+
+    # Boundary Conditions
+    bc, bc_value = np.array([], 'i'), np.array([], 'f')
+    bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_T_1000, 1000, 1)
+    bc, bc_value = cfu.applybc(bdofs, bc, bc_value, MARKER_T_100, 100, 1)
+
+    # return
+    return (coord, edof, dofs, bdofs, bc, bc_value, element_markers, mesh)
+
+if __name__=="__main__":
+    mesh = generate_mesh(show_geometry=False)
+
+### Preprocess ###
+
+coords          = mesh[0] # All node coordinates
+edof            = mesh[1] # Element topology
+dofs            = mesh[2] # Node degree of freedom
+bdofs           = mesh[3] # Degrees of freedom for all boundary nodes
+bc              = mesh[4] # Boundary nodes
+bc_value        = mesh[5] # Values for each respective boundary node
+element_markers = mesh[6] # Element markers (?)
+
+#newMesh = mesh[7]
+
+k = 1
+D = np.array([[k, k], [k, k]])    # Homogenous material assumption
+
+t = 1                           # Thiccness
+
+nen = 3                         # Nbr of nodes per element
+ndof = len(dofs)                # Nbr of degrees of freedom in total
+
+Ex, Ey = cfc.coordxtr(edof, coords, dofs, 3)
+
+nel = len(Ex)                   # Nbr of elements
+
+K = np.zeros([ndof, ndof])
+F_l = np.zeros([ndof, 1])
+
+### Assembling ###
+
+for i in range(nel):
+    Ke = cfc.flw2te( Ex[i], Ey[i], [t], D )
+    K = cfc.assem( edof[i,:], K, Ke)
+
+a, Q = cfc.solveq(K, F_l, bc, bc_value)
+
+## Post-Processing ###
+
+ed = cfc.extract_ed( edof, a )
+
+cfv.figure(fig_size=(10,10))
+
+cfv.draw_nodal_values_shaded(a, coords, edof, title="Temperature")
+
+cfv.colorbar()
+
+plt.show()
